@@ -1,3 +1,4 @@
+import random
 from typing import List, Tuple, Union
 import numpy as np
 from numpy.lib.arraysetops import isin
@@ -5,6 +6,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
+
 
 class TimeSeriesDataset:
 
@@ -30,127 +32,128 @@ class TimeSeriesDataset:
 
         return agg
 
-
-    def create_data(self, df, columnNames, n_in, n_out, multistep=False, target="readines"):
+    def create_data(self, df, columnNames, n_in, n_out, player_index, multistep=False):
         players = list(df['player_name_x'].unique())
+
         print("amount of players to train each config: ", len(players))
 
-        # activate all players
-        for i in range(1):
+        current_player = players[player_index]
+        test_players = players.copy()
 
-            # print(i+1,"/",len(players))
+        test_players.remove(current_player)
 
-            all_but_one = players[:i] + players[i + 1:-1]
-            last_player = players[len(players) - 1]
+        val_player = random.choice(test_players)
+        test_players.remove(val_player)
 
-            df_train = df[df['player_name_x'].isin(all_but_one)]
-            df_test = df.loc[df['player_name_x'] == players[i]]
-            df_val = df.loc[df['player_name_x'] == last_player]
+        df_train = df[df['player_name_x'].isin(players)]
+        df_test = df[df['player_name_x'].isin(test_players)]
+        df_val = df[df['player_name_x'].isin([val_player])]
 
-            train = df_train[columnNames]
-            test = df_test[columnNames]
-            val = df_val[columnNames]
+        #all_but_one = players[:player_index] + players[player_index+1:]
+        #df_train = df[df['player_name_x'].isin(all_but_one)]
+        #df_test = df.loc[df['player_name_x'] == players[player_index]]
+        #df_val = df.loc[df['player_name_x'] == val_player]
 
-            train = train.reset_index(drop=True)
-            test = test.reset_index(drop=True)
-            val = val.reset_index(drop=True)
+        train = df_train[columnNames]
+        test = df_test[columnNames]
+        val = df_val[columnNames]
 
-            num_features = len(train.columns.tolist())
+        train = train.reset_index(drop=True)
+        test = test.reset_index(drop=True)
+        val = val.reset_index(drop=True)
 
-            train_scalar = MinMaxScaler()
-            train_transformed = train_scalar.fit_transform(train)
-            test_transformed = train_scalar.transform(test)
-            val_transformed = train_scalar.transform(val)
+        num_features = len(train.columns.tolist())
 
-            if not multistep:
-                train_direct = self.series_to_supervised(train_transformed.copy(), n_in, n_out)
-                test_direct = self.series_to_supervised(test_transformed.copy(), n_in, n_out)
-                val_direct = self.series_to_supervised(val_transformed.copy(), n_in, n_out)
+        train_scalar = MinMaxScaler()
+        train_transformed = train_scalar.fit_transform(train)
+        test_transformed = train_scalar.transform(test)
+        val_transformed = train_scalar.transform(val)
 
-                features_m = train_direct.columns.tolist()[:num_features * n_out]
-                targets_m = test_direct.columns.tolist()[num_features:]
+        if not multistep:
+            train_direct = self.series_to_supervised(train_transformed.copy(), n_in, n_out)
+            test_direct = self.series_to_supervised(test_transformed.copy(), n_in, n_out)
+            val_direct = self.series_to_supervised(val_transformed.copy(), n_in, n_out)
 
-                features = train_direct.columns.tolist()[:(n_in*num_features)]
-                targets = test_direct.columns.tolist()[(n_in*num_features):]
+            features_m = train_direct.columns.tolist()[:num_features * n_out]
+            targets_m = test_direct.columns.tolist()[num_features:]
 
-                n_vars = 1 if type(train_transformed) is list else train_transformed.shape[1]
-                features_ = list()
-                targets_ = list()
+            features = train_direct.columns.tolist()[:(n_in * num_features)]
+            targets = test_direct.columns.tolist()[(n_in * num_features):]
 
-                # for i in range(n_in, 0, -1):
-                #     for k in range(n_vars):
-                #         features_.append(columnNames[k] + '_t-%d' % i)
-                #
-                # for i in range(n_out):
-                #     targets_.append(columnNames[i] + '_t+%d' % n_out)
+            n_vars = 1 if type(train_transformed) is list else train_transformed.shape[1]
+            features_ = list()
+            targets_ = list()
 
-                X_train = train_direct[features]
-                #X_train.columns = features_
+            # for i in range(n_in, 0, -1):
+            #     for k in range(n_vars):
+            #         features_.append(columnNames[k] + '_t-%d' % i)
+            #
+            # for i in range(n_out):
+            #     targets_.append(columnNames[i] + '_t+%d' % n_out)
 
-                y_train = train_direct[targets]
-                #y_train.columns = targets_
+            X_train = train_direct[features]
+            # X_train.columns = features_
 
-                X_test = test_direct[features]
-                #X_test.columns = features_
+            y_train = train_direct[targets]
+            # y_train.columns = targets_
 
-                y_test = test_direct[targets]
-               # y_test.columns = targets_
+            X_test = test_direct[features]
+            # X_test.columns = features_
 
-                X_val = val_direct[features]
-                #X_val.columns = features_
+            y_test = test_direct[targets]
+            # y_test.columns = targets_
 
-                y_val = val_direct[targets]
-               #y_val.columns = targets_
+            X_val = val_direct[features]
+            # X_val.columns = features_
 
-                # select targets to predict
-                # target_columns = y_train.columns
-                #
-                # selected_columns = [target_columns[i] for i in range(len(target_columns)) if
-                #                     target in target_columns[i]]
+            y_val = val_direct[targets]
+            # y_val.columns = targets_
 
-                self.X_test = X_test
-                self.X_train = X_train
-                self.X_val = X_val
-                #
-                # self.y_train_selected = y_train[selected_columns]
-                # self.y_test_selected = y_test[selected_columns]
-                # self.y_val_selected = y_val[selected_columns]
+            # select targets to predict
+            # target_columns = y_train.columns
+            #
+            # selected_columns = [target_columns[i] for i in range(len(target_columns)) if
+            #                     target in target_columns[i]]
 
-                self.y_train_selected = y_train
-                self.y_test_selected = y_test
-                self.y_val_selected = y_val
+            self.X_test = X_test
+            self.X_train = X_train
+            self.X_val = X_val
+            #
+            # self.y_train_selected = y_train[selected_columns]
+            # self.y_test_selected = y_test[selected_columns]
+            # self.y_val_selected = y_val[selected_columns]
 
-                y_train.to_pickle("y_train.pkl")
-                y_test.to_pickle("y_test.pkl")
-                y_val.to_pickle("y_val.pkl")
+            self.y_train_selected = y_train
+            self.y_test_selected = y_test
+            self.y_val_selected = y_val
 
-                X_test.to_pickle("X_test.pkl")
-                X_val.to_pickle("X_val.pkl")
+            #y_train.to_pickle("y_train.pkl")
+            #y_test.to_pickle("y_test.pkl")
+            #y_val.to_pickle("y_val.pkl")
 
 
     def __init__(
-        self,
-        data: pd.DataFrame,
-        n_in: int,
-        n_out: int,
-        column_names: str,
-        #n_val: Union[float, int] = 0.2,
-        #n_test: Union[float, int] = 0.2,
-        normalize: str = "None",  # options are "none", "local", "global"
-        normalize_params: Tuple[
-            float, float
-        ] = None,  # tuple of mean and std for pre-calculated standardization
-        mode="train",  # options are "train", "val", "test"
+            self,
+            data: pd.DataFrame,
+            n_in: int,
+            n_out: int,
+            column_names: str,
+            normalize: str = "None",  # options are "none", "local", "global"
+            normalize_params: Tuple[
+                float, float
+            ] = None,  # tuple of mean and std for pre-calculated standardization
+            mode="train",  # options are "train", "val", "test"
+            player_index=0
     ):
-
         self.column_names = column_names
+        self.player_index = player_index
 
-        if data.ndim==1:
-            data = data.reshape(-1,1)
+        if data.ndim == 1:
+            data = data.reshape(-1, 1)
         if normalize == "global" and mode != "train":
             assert (
-                isinstance(normalize_params, tuple)
-                and len(normalize_params) == 2
+                    isinstance(normalize_params, tuple)
+                    and len(normalize_params) == 2
             ), "If using Global Normalization, in valid and test mode normalize_params argument should be a tuple of precalculated mean and std"
         self.data = data.copy()
 
@@ -159,7 +162,7 @@ class TimeSeriesDataset:
         self.normalize = normalize
         self.mode = mode
 
-        self.create_data(self.data, self.column_names, n_in, n_out, multistep=False)
+        self.create_data(self.data, self.column_names, n_in, n_out, self.player_index, multistep=False)
 
         if mode == "train":
             self.data = self.X_train
@@ -172,8 +175,8 @@ class TimeSeriesDataset:
             self.y = self.y_test_selected
 
         # This is the actual input on which to iterate
-        #self.data = data[start_index:end_index, :]
-        #CAUTION: fix normalization once the pipeline is running
+        # self.data = data[start_index:end_index, :]
+        # CAUTION: fix normalization once the pipeline is running
 
         # if normalize == "global":
         #     if mode == "train":
@@ -183,14 +186,14 @@ class TimeSeriesDataset:
         #         self.mean, self.std = normalize_params
         #     self.data = (self.data - self.mean) / self.std
 
+
     def __len__(self):
-        #return len(self.data) - self.n_out*len(self.column_names) - self.n_in*len(self.column_names) + 1 #to account for zero indexing
         return len(self.data)
 
-    def __getitem__(self, idx):
 
+    def __getitem__(self, idx):
         x = self.data.iloc[idx, :]
-        y = self.y.iloc[idx,:]
+        y = self.y.iloc[idx, :]
 
         x_transformed = x.reset_index().drop(["index"], axis=1).to_numpy()
         y_transformed = y.reset_index().drop(["index"], axis=1).to_numpy()
@@ -200,16 +203,18 @@ class TimeSeriesDataset:
 
         return x_transformed, y_transformed
 
+
 class TimeSeriesDataModule(pl.LightningDataModule):
     def __init__(
-        self,
-        data: Union[pd.DataFrame, np.ndarray],
-        n_in: int = 10,
-        n_out: int = 1,
-        normalize: str = "none",
-        batch_size: int = 32,
-        num_workers: int = 0,
-        column_names: str = ""
+            self,
+            data: Union[pd.DataFrame, np.ndarray],
+            n_in: int = 10,
+            n_out: int = 1,
+            normalize: str = "none",
+            batch_size: int = 32,
+            num_workers: int = 0,
+            column_names: str = "",
+            player_index=0
     ):
         super().__init__()
         self.data = data
@@ -218,8 +223,9 @@ class TimeSeriesDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.normalize = normalize
-        self._is_global = normalize=="global"
+        self._is_global = normalize == "global"
         self.column_names = column_names
+        self.player_index = player_index
 
     def setup(self, stage=None):
 
@@ -230,18 +236,20 @@ class TimeSeriesDataModule(pl.LightningDataModule):
                 n_in=self.n_in,
                 n_out=self.n_out,
                 normalize=self.normalize,
-                normalize_params= None,
+                normalize_params=None,
                 mode="train",
-                column_names= self.column_names
+                column_names=self.column_names,
+                player_index=self.player_index
             )
             self.val = TimeSeriesDataset(
                 data=self.data,
                 n_in=self.n_in,
                 n_out=self.n_out,
                 normalize=self.normalize,
-                normalize_params= (self.train.mean, self.train.std) if self._is_global else None,
+                normalize_params=(self.train.mean, self.train.std) if self._is_global else None,
                 mode="val",
-                column_names=self.column_names
+                column_names=self.column_names,
+                player_index=self.player_index
             )
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
@@ -250,9 +258,10 @@ class TimeSeriesDataModule(pl.LightningDataModule):
                 n_in=self.n_in,
                 n_out=self.n_out,
                 normalize=self.normalize,
-                normalize_params= (self.train.mean, self.train.std) if self._is_global else None,
+                normalize_params=(self.train.mean, self.train.std) if self._is_global else None,
                 mode="test",
-                column_names=self.column_names
+                column_names=self.column_names,
+                player_index=self.player_index
             )
 
     def train_dataloader(self):
