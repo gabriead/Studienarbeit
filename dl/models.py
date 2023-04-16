@@ -12,7 +12,7 @@ import torch.nn as nn
 import torchmetrics
 from omegaconf import DictConfig, OmegaConf
 
-from src.dl.attention import (
+from dl.attention import (
     GeneralAttention,
     AdditiveAttention,
     DotProductAttention,

@@ -1,0 +1,12 @@
+input_size: 1
+d_model: 64
+n_heads: 4
+n_layers: 8
+ff_multiplier: 4
+activation: relu
+multi_step_horizon: 1
+dropout: 0.1
+learning_rate: 0.001
+optimizer_params: {}
+lr_scheduler: null
+lr_scheduler_params: {}

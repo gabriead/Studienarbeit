@@ -124,6 +124,10 @@ class TimeSeriesDataset:
                 y_test.to_pickle("y_test.pkl")
                 y_val.to_pickle("y_val.pkl")
 
+                X_test.to_pickle("X_test.pkl")
+                X_val.to_pickle("X_val.pkl")
+
+
     def __init__(
         self,
         data: pd.DataFrame,
@@ -138,13 +142,9 @@ class TimeSeriesDataset:
         ] = None,  # tuple of mean and std for pre-calculated standardization
         mode="train",  # options are "train", "val", "test"
     ):
-        # if isinstance(n_val, float):
-        #     n_val = int(n_val * len(data))
-        # if isinstance(n_test, float):
-        #     n_test = int(n_test * len(data))
+
         self.column_names = column_names
-        #if isinstance(data, pd.DataFrame):
-        #    data = data.values
+
         if data.ndim==1:
             data = data.reshape(-1,1)
         if normalize == "global" and mode != "train":
@@ -153,43 +153,23 @@ class TimeSeriesDataset:
                 and len(normalize_params) == 2
             ), "If using Global Normalization, in valid and test mode normalize_params argument should be a tuple of precalculated mean and std"
         self.data = data.copy()
-        #self.n_val = n_val
-        #self.n_test = n_test
+
         self.n_in = n_in
         self.n_out = n_out
         self.normalize = normalize
         self.mode = mode
-        #total_data_set_length = len(data)
-        # The beginning of the data set is where 'train' starts
-        # The end of the dataset is here we find the last testing data
-        # We therefore start at 0
-        # And end at total_data_set_length = n_samples + (n_model+1) + n_val + n_test
-        # (a sample is n_model vectors for X and 1 vector for Y)
-        # Final -1 is to reflect Python's 0-array convention
-        # self.n_samples = (
-        #         total_data_set_length - (self.n_out + 1) - self.n_val - self.n_test
-        # )
 
         self.create_data(self.data, self.column_names, n_in, n_out, multistep=False)
 
-
-        # Adjust the start of the dataset for training / val / test
         if mode == "train":
-            #start_index = 0
-            #end_index = (self.n_out + 1) + self.n_samples
             self.data = self.X_train
             self.y = self.y_train_selected
         elif mode == "val":
-            # Adapt this one the pipeline is running
-            #start_index = (self.n_out + 1) + self.n_samples - self.n_in
-            #end_index = (self.n_out + 1) + self.n_samples + self.n_val
-            self.data = self.X_train
-            self.y = self.y_train_selected
+            self.data = self.X_val
+            self.y = self.y_val_selected
         elif mode == "test":
-            #start_index = (self.n_out + 1) + self.n_samples + self.n_val - self.n_in
-            #end_index = (self.n_out + 1) + self.n_samples + self.n_val + self.n_test
-            self.data = self.X_train
-            self.y = self.y_train_selected
+            self.data = self.X_test
+            self.y = self.y_test_selected
 
         # This is the actual input on which to iterate
         #self.data = data[start_index:end_index, :]
@@ -242,6 +222,7 @@ class TimeSeriesDataModule(pl.LightningDataModule):
         self.column_names = column_names
 
     def setup(self, stage=None):
+
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
             self.train = TimeSeriesDataset(
@@ -284,7 +265,7 @@ class TimeSeriesDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(
-            self.train,
+            self.val,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -292,7 +273,7 @@ class TimeSeriesDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(
-            self.train,
+            self.test,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,

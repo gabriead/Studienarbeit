@@ -4,37 +4,43 @@ import pandas as pd
 from tqdm.notebook import tqdm
 from sklearn import metrics
 import torch
+from dl.my_dataloaders import TimeSeriesDataModule
+from dl.models import TransformerConfig, TransformerModel
+import pytorch_lightning as pl
 
-np.random.seed(42)
 tqdm.pandas()
 
 print(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
 
-
-from src.dl.my_dataloaders import TimeSeriesDataModule
-from src.dl.models import TransformerConfig, TransformerModel
-import pytorch_lightning as pl
-
 # For reproduceability set a random seed
 pl.seed_everything(42)
 
-n_in = 30
+n_in = 1
 n_out = 1
 
-# Currently not using time features
+# Currently not using time features !!!
 df = create_dataset()
 #CAUTION:dates are currently not being used for debugging reasons
 columnNames = ["daily_load", "fatigue", "mood", "readiness", "sleep_duration", "sleep_quality", "soreness", "stress"]
 players = list(df['player_name_x'].unique())
+torch.set_float32_matmul_precision('medium')
+
+num_workers = 0
+DEBUG = False
+if DEBUG:
+    num_workers = 0
+else:
+    num_workers = 20
+
 
 #CAUTION: change batch size
 datamodule = TimeSeriesDataModule(data=df,
                                   n_in=n_in,
                                   n_out=n_out,
                                   normalize="no_normalization",  # normalizing the data
-                                  batch_size=32,
-                                  num_workers=0,
+                                  batch_size=256,
+                                  num_workers=num_workers,
                                   column_names=columnNames)
 datamodule.setup()
 
@@ -53,9 +59,7 @@ transformer_config = TransformerConfig(
 model = TransformerModel(config=transformer_config)
 
 trainer = pl.Trainer(
-    auto_select_gpus=True,
-    min_epochs=30,
-    max_epochs=100,
+    max_epochs=20,
     callbacks=[pl.callbacks.EarlyStopping(monitor="valid_loss", patience=3)],
 )
 trainer.fit(model, datamodule)
@@ -75,21 +79,28 @@ def calculate(y: pd.Series, y_pred: pd.Series, name: str, y_train: pd.Series = N
 
     }
 
-tag = f"SingleStep_Transformer_"
+y_test = pd.read_pickle("y_test.pkl")
+y_val = pd.read_pickle("y_val.pkl")
+
 y_pred = trainer.predict(model, datamodule.test_dataloader())
-# # pred is a list of outputs, one for each batch
 y_pred = torch.cat(y_pred).squeeze().detach().numpy()
-# # Selecting forward predictions of HORIZON timesteps, every HORIZON timesteps and flattening it
-HORIZON = n_out
-y_pred = y_pred[0::HORIZON].ravel()
-# # Apply reverse transformation because we applied global normalization
-# pred = pred * datamodule.train.std + datamodule.train.mean
 
-y_train = pd.read_pickle("y_train")
-y_test = pd.read_pickle("y_test")
-y_val = pd.read_pickle("y_val")
+df_pred = pd.DataFrame(y_pred, columns = ['0','1', '2', '3', '4', '5', '6', '7'])
 
+df_pred.to_pickle("y_pred.pkl")
+#extract readiness from the data
+y_pred_readiness = df_pred['3']
+y_test_readiness = y_test['ft4_t+0']
 
+import matplotlib.pyplot as plt
+def plot_forecast_xgb(y_true, y_pred):
+
+    plt.figure(figsize=(12, 6))
+    y_true.plot(label="true", color="g")
+    y_pred.plot(label="test", color="r")
+
+    plt.savefig("plot.png")
+    plt.show()
 
 def mean_absolute_percentage_error_func(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
@@ -98,19 +109,16 @@ def mean_absolute_percentage_error_func(y_true, y_pred):
 
 def timeseries_evaluation_metrics_func(y_true, y_pred):
 
-    # print('Evaluation metric results: ')
-
     mse = metrics.mean_squared_error(y_true, y_pred)
     mae = metrics.mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(metrics.mean_squared_error(y_true, y_pred))
-    mape = mean_absolute_percentage_error_func(y_true, y_pred)
+    #mape = mean_absolute_percentage_error_func(y_true, y_pred)
     print(f'MSE is : {metrics.mean_squared_error(y_true, y_pred)}')
     print(f'MAE is : {metrics.mean_absolute_error(y_true, y_pred)}')
     print(f'RMSE is : {np.sqrt(metrics.mean_squared_error(y_true, y_pred))}')
-    print(f'MAPE is : {mean_absolute_percentage_error_func(y_true, y_pred)}')
-    print(f'R2 is : {metrics.r2_score(y_true, y_pred)}', end='\n\n')
 
-    return {"MSE":mse, "MAE":mae, "RMSE":rmse, "MAPE":mape}
+    return {"MSE":mse, "MAE":mae, "RMSE":rmse}
 
 
-timeseries_evaluation_metrics_func(y_test, y_train)
+timeseries_evaluation_metrics_func(y_test_readiness, y_pred_readiness)
+plot_forecast_xgb(y_test_readiness, y_pred_readiness)
