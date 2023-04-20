@@ -54,7 +54,7 @@ def timeseries_evaluation_metrics_func(y_true, y_pred, player):
     return {"MSE":mse, "MAE":mae, "RMSE":rmse}
 
 def pipeline():
-    n_in = 90
+    n_in = 7
     n_out = 1
     metrics_df = pd.DataFrame(columns = ["player_name", "mae", "rmse", "mse", "n_in", "n_out", "features_in", "features_out"])
 
