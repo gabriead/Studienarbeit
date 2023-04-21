@@ -14,8 +14,6 @@ from lazypredict.Supervised import LazyRegressor
 from sklearn import metrics
 
 
-
-
 def fitXGBoost(X_train, y_train, X_test, y_test):
     """
     fits data to XGBOOST model
@@ -100,7 +98,7 @@ def plot_forecast_statistical_tests(y_true, y_pred, player, df):
 
 
 def pipeline():
-    n_in = 30
+    n_in = 1
     n_out = 1
     metrics_df = pd.DataFrame(
         columns=["player_name", "mae", "rmse", "mse", "n_in", "n_out", "features_in", "features_out"])
@@ -117,13 +115,8 @@ def pipeline():
     # Currently not using time features !!!
     df = create_dataset()
     # CAUTION:dates are currently not being used for debugging reasons
-    columnNames = ["daily_load", "fatigue", "mood", "readiness", "sleep_duration", "sleep_quality", "soreness",
+    columnNames = ["readiness", "daily_load", "fatigue", "mood", "sleep_duration", "sleep_quality", "soreness",
                    "stress"]
-
-    features = ["daily_load", "fatigue", "mood", "sleep_duration", "sleep_quality", "soreness",
-                   "stress"]
-
-    target = ["readiness"]
 
     # filter teams
     df = df[df["player_name_x"].str.startswith("TeamA")]
@@ -134,35 +127,34 @@ def pipeline():
 
     for i in range(0, len(players)):
         current_player = players[i]
-        test_players = players.copy()
+        #test_players = players.copy()
 
-        test_players.remove(current_player)
+        #test_players.remove(current_player)
+        #val_player = random.choice(test_players)
+        #test_players.remove(val_player)
+        #df_train = df[df['player_name_x'].isin(players)]
+        #df_test = df[df['player_name_x'].isin(test_players)]
+        #df_val = df[df['player_name_x'].isin([val_player])]
 
-        val_player = random.choice(test_players)
-        test_players.remove(val_player)
-
-        df_train = df[df['player_name_x'].isin(players)]
-        df_test = df[df['player_name_x'].isin(test_players)]
-        df_val = df[df['player_name_x'].isin([val_player])]
+        all_but_one = players[:i] + players[i+1:]
+        df_train = df[df['player_name_x'].isin(all_but_one)]
+        df_test = df.loc[df['player_name_x'] == players[i]]
 
         train = df_train[columnNames]
         test = df_test[columnNames]
-        val = df_val[columnNames]
 
         train = train.reset_index(drop=True)
         test = test.reset_index(drop=True)
-        val = val.reset_index(drop=True)
+
         from sklearn.preprocessing import MinMaxScaler
         num_features = len(train.columns.tolist())
 
         train_scalar = MinMaxScaler()
         train_transformed = train_scalar.fit_transform(train)
         test_transformed = train_scalar.transform(test)
-        val_transformed = train_scalar.transform(val)
 
         train_direct = series_to_supervised(train_transformed.copy(), n_in, n_out)
         test_direct = series_to_supervised(test_transformed.copy(), n_in, n_out)
-        val_direct = series_to_supervised(val_transformed.copy(), n_in, n_out)
 
         features = train_direct.columns.tolist()[:(n_in * num_features)]
         targets = test_direct.columns.tolist()[(n_in * num_features):]
@@ -179,17 +171,18 @@ def pipeline():
         y_test = test_direct[targets]
         # y_test.columns = targets_
 
-        X_val = val_direct[features]
+        #X_val = val_direct[features]
         # X_val.columns = features_
 
-        y_val = val_direct[targets]
+        #y_val = val_direct[targets]
         # y_val.columns = targets_
         #xgboost_mae, xgboost_mape, xgboost_rmse = xgboost_model(X_test, X_train, y_test, y_train,players[i] ,metrics_df)
         #naive_forecast_drift_mae, naive_forecast_drift_mape, naive_forecast_drift_rmse = naive_forecast_mean(y_test, y_train, n_out, players[i] ,metrics_df)
         #naive_forecast_drift_mae, naive_forecast_drift_mape, naive_forecast_drift_rmse = naive_forecast_drift(y_test, y_train, players[i], metrics_df)
         #naive_forecast_drift_mae, naive_forecast_drift_mape, naive_forecast_drift_rmse = auto_arima_forecast(y_test, y_train, n_out, players[i] ,metrics_df)
-        #lazypredict_regressors(X_test, X_train, y_test, y_train, players[i])
-        treeregressor(X_test, X_train, y_test, y_train, players[i])
+
+        lazypredict_regressors(X_test, X_train, y_test, y_train, players[i])
+        #treeregressor(X_test, X_train, y_test, y_train, players[i])
 
         #print("XGBOOST:", naive_forecast_drift_mae, naive_forecast_drift_mape, naive_forecast_drift_rmse)
 
@@ -231,13 +224,15 @@ def treeregressor(X_test, X_train, y_test, y_train, player):
     plt.show()
     y_pred = tree_model.predict(X_test)
 
-    y_test_selected = y_test['ft4_t+0']
+#    y_pred.index = y_test.index
+
+    y_test = y_test['ft4_t+0']
     df_pred = pd.DataFrame(y_pred, columns=['0', '1', '2', '3', '4', '5', '6', '7'])
     y_pred = df_pred['3']
 
 
 
-    mse, mae, rmse = plot_forecast_xgb(y_test_selected, y_pred, player)
+    mse, mae, rmse = plot_forecast_xgb(y_test, y_pred, player)
     # results_xgb.append(calculate_RMSE(y_test, y_predictXGB, train_scalar, columnNames))
     return mse, mae, rmse
 
